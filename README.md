@@ -7,7 +7,7 @@ Projenin arkasındaki **Astro Technology Company** ve topluluk geliştiricileri;
 ### 🤖 Bu Projede Houston
 Bu projede Houston statik bir illüstrasyon olmaktan çıkıp;
 * Sayfa içeriğini analiz eden **Pagefind** arama motoruna entegre edilmiştir.
-* **Durak Kelime Filtrelemesi ve Sorgu İyileştirmesi:** Kullanıcı "MOSFET nedir?" veya "Direnç nasıl çalışır?" diye sorduğunda,`HA_STOPWORDS` filtresi devreye girer 5N1K soru eklerini ve dolgu kelimelerini temizler. Böylece Pagefind arama motoruna yalnızca aranan çekirdek terim "MOSFET" ve "Direnç" iletilir.
+* **Durak Kelime Filtrelemesi ve Sorgu İyileştirmesi:** Kullanıcı "MOSFET nedir?" veya "Direnç nasıl çalışır?" diye sorduğunda,`HA_STOPWORDS` filtresi devreye girer 5N1K soru eklerini ve dolgu kelimelerini temizler. Böylece Pagefind arama motoruna yalnızca aranan çekirdek terim "MOSFET" ve "Direnç" iletilir. Yapay zekaya soru yönlendirilirken her zaman kullanıcının orijinal sorusu korunur ve arama motoru çıktısı bağlam olarak eklenir.
 * **Fuzzy Small-Talk Motoru:** Gündelik sohbetler için dışarıdan hiçbir NLP kütüphanesi yüklemeden kendi vanilla js ile eşleştirme motorunu kullanır:
 * Kullanıcının imlecini ve etkileşimlerini takip eden canlı yüz ifadeleri, easter egg'ler, pozlamalar ve duygusal durumlar eklenmiştir.Yapboz gibi türetilerek daha da fazla arttırılabilir.
 * **Perplexity AI** altyapısıyla 0 maaliyetle sorulan soruları yanıtlayan canlı bir asistana dönüştürülmüştür istenirse yapay zeka API'si bağlanıp sohbet botuna çevirilebilir.
