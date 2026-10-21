@@ -1,0 +1,1024 @@
+---
+/**
+ * Houston shell — kapı (HoustonGate) tarafından hideHouston=false ise
+ * fetch ile çekilip gövdeye eklenir. Tek başına sayfaya basılmaz;
+ * Header yalnızca HoustonGate basar.
+ */
+
+interface Props {
+  /** Sunucu tarafından cookie üzerinden gelen gizleme bayrağı. true ise HTML'de data-ha-hidden="true" yazılır ve FOUC önlenir. */
+  hideHouston?: boolean;
+}
+
+const { hideHouston = false } = Astro.props;
+---
+
+<div id="ha-shell" style="display:none" data-ha-hidden={hideHouston ? 'true' : undefined}>
+
+<button
+  type="button"
+  class="ha-fab"
+  id="houston-fab"
+  title="Houston'a anlamadığın konuyu sor belki cevap verir"
+  aria-label="Houston yapay zekâ asistanını aç"
+  aria-expanded="false"
+  aria-controls="houston-panel">
+  
+  <span class="ha-houston" aria-hidden="true">
+    <span class="ha-houston__glow"></span>
+    <span class="ha-houston__frame">
+      <span class="ha-houston__body">
+        <span class="ha-houston__face">
+          <span class="eye" data-shape="circle"></span>
+          <span class="mouth" data-shape="half-up"></span>
+          <span class="eye" data-shape="circle"></span>
+        </span>
+      </span>
+    </span>
+      <span class="ha-houston__zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
+      <span class="ha-houston__hearts" aria-hidden="true"><i>♥</i><i>♥</i><i>♥</i></span>
+  </span>
+  
+</button>
+
+<!-- Seyrek "Operatör" konuşma balonu (panel kapalı + idle iken rastgele belirir) -->
+<div class="ha-bubble" id="houston-bubble" role="status" aria-live="polite"></div>
+
+<!-- (Test butonu kaldırıldı) -->
+
+<!-- Shell içi geri çağırma sekmesi kapıda durur; burada YOK.
+  Kapatınca çekirdek ha:hidden gönderir, kapı shell'i DOM'dan söker. -->
+
+<section
+  class="ha-panel"
+  id="houston-panel"
+  role="dialog"
+  aria-label="Houston yapay zekâ asistanı"
+  hidden
+>
+  <header class="ha-head">
+    <button
+      type="button"
+      class="ha-icon-btn"
+      id="houston-minimize"
+      aria-label="Paneli küçült"
+      title="Küçült"
+    >
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 8h8" />
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="ha-icon-btn"
+      id="houston-close"
+      aria-label="Paneli kapat"
+      title="Kapat"
+    >
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 4l8 8M12 4l-8 8" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- Sohbet görünümü -->
+  <div class="ha-view">
+    <div class="ha-msgs" id="houston-msgs" aria-live="polite"></div>
+
+    <!-- Yazarken canlı site içi eşleşmeler (Pagefind) -->
+    <div class="ha-live" id="houston-live" hidden>
+      <p class="ha-live__head" id="houston-live-head"></p>
+      <ul class="ha-live__list" id="houston-live-list"></ul>
+    </div>
+
+    <form class="ha-form" id="houston-form" autocomplete="off">
+      <textarea
+        id="houston-input"
+        class="ha-input"
+        rows="1"
+        maxlength="1200"
+        placeholder="Neyi anlamadın? Örn: MOSFET nedir?"
+        aria-label="Sorunuzu yazın"
+      ></textarea>
+      <button type="submit" class="ha-send" title="Gönder" aria-label="Soruyu gönder">
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" />
+        </svg>
+      </button>
+    </form>
+  </div>
+</section>
+
+<!-- Soru gönderilince sayfanın en üst ortasına fırlatılan Perplexity işareti -->
+<div class="ha-throw" id="ha-throw" aria-hidden="true">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9L4.9 19.1" />
+  </svg>
+</div>
+
+<style>
+  /* --- FAB: sağ alttaki Houston karakteri --- */
+  .ha-fab {
+    position: fixed;
+    inset-inline-end: 1rem;
+    inset-block-end: max(1rem, env(safe-area-inset-bottom, 0px));
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    padding: 0;
+    border: 0;
+    border-radius: 30% / 40%;
+    background: transparent;
+    cursor: pointer;
+    /* Karakter takip değişkenleri — yalnızca panel açıkken JS günceller */
+    --x: 0;
+    --y: 0;
+    --deg: 0deg;
+    --ha-bw: 3px;
+    --ha-border: conic-gradient(
+      from var(--deg) at 50% 50%,
+      #3245ff 0deg,
+      #bc52ee 102deg,
+      #4af2c8 150deg,
+      #4af2c8 200deg,
+      #3245ff 360deg
+    );
+    transition: width 320ms cubic-bezier(0.23, 1, 0.32, 1),
+      height 320ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  /* --- Geri çağırma sekmesi: Header'daki menü sekmesinin sağ kenar aynası ---
+     Houston küstükten sonra sağdan kayarak belirir. */
+  .ha-radio {
+    position: fixed;
+    inset-block-end: max(1rem, env(safe-area-inset-bottom, 0px));
+    inset-inline-end: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 2.5rem;
+    padding: 0;
+    border: 1px solid var(--sl-color-hairline-light);
+    border-inline-end: none;
+    border-start-start-radius: 0.45rem;
+    border-end-start-radius: 0.45rem;
+    background: var(--sl-color-black);
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+    transform: translateX(100%);
+    transition: transform 320ms cubic-bezier(0.23, 1, 0.32, 1),
+      color 150ms ease, background 150ms ease;
+  }
+
+  .ha-radio[hidden] {
+    display: none !important;
+  }
+
+  /* Houston gidince sekme sağdan kayarak içeri girer */
+  .ha-radio:not([hidden]) {
+    transform: translateX(0);
+  }
+
+  .ha-radio:hover {
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-text-accent);
+  }
+
+  .ha-radio:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+
+  /* Açıkken Houston büyür ve canlanır */
+  .ha-fab[aria-expanded='true'] {
+    width: 4.5rem;
+    height: 4.5rem;
+    --ha-bw: 5px;
+  }
+
+  /* Operatör balonu okunurken Houston canlanır: chat'ten (4.5rem) daha büyük */
+  .ha-fab.ha-bark-big {
+    width: 5.5rem;
+    height: 5.5rem;
+    --ha-bw: 6px;
+  }
+
+  .ha-fab:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 4px;
+  }
+
+  /* --- Houston: imleç takip eden, aşağı-yukarı süzülen karakter --- */
+  .ha-houston {
+    position: relative;
+    display: block;
+    width: 100%;
+  }
+
+  .ha-houston__frame {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 128 / 96;
+    padding: var(--ha-bw);
+    border-radius: 24% / 32%;
+    background: var(--ha-border);
+    transition: padding 320ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .ha-houston__glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 24% / 32%;
+    background: var(--ha-border);
+    filter: blur(9px);
+    opacity: 0.7;
+    z-index: -1;
+    transition: opacity 200ms ease;
+  }
+
+  .ha-fab:hover .ha-houston__glow {
+    opacity: 0.95;
+  }
+
+  .ha-houston__body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 20% / 27%;
+    background: radial-gradient(
+      80% 80% at 50% 37.5%,
+      #191c24 33%,
+      #111218 67%,
+      #040506 100%
+    );
+  }
+
+  /* Yüz imleci takip eder (yalnızca panel açıkken --x/--y değişir) */
+  .ha-houston__face {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: center;
+    height: 42%;
+    aspect-ratio: 102 / 34;
+    margin: auto auto 13%;
+    color: #fff;
+    transform: translate(calc(var(--x) * 14%), calc(var(--y) * 18%));
+    transition: transform 500ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .ha-houston .eye,
+  .ha-houston .mouth {
+    position: relative;
+    aspect-ratio: 1;
+    background: currentColor;
+    margin: 17.5%;
+  }
+
+  /* Göz/ağız şekilleri (Astro Houston eklentisinden) */
+  .ha-houston [data-shape^='circle'] {
+    border-radius: 50%;
+  }
+
+  .ha-houston [data-shape^='circle-stroke'] {
+    background: none;
+    border: calc(var(--ha-bw) * 0.67) solid currentColor;
+  }
+
+  .ha-houston [data-shape^='bar'] {
+    aspect-ratio: 80 / 24;
+    border-radius: 999px;
+  }
+
+  .ha-houston [data-shape^='square'] {
+    border-radius: calc(var(--ha-bw) / 2);
+    transform: scale(0.9);
+  }
+
+  .ha-houston [data-shape$='small'] {
+    transform: scale(0.55);
+  }
+
+  .ha-houston [data-shape^='half'] {
+    aspect-ratio: 2 / 1;
+    background: none;
+    border: calc(var(--ha-bw) * 0.67) solid currentColor;
+  }
+
+  .ha-houston [data-shape^='half-up'] {
+    border-bottom-left-radius: 999px;
+    border-bottom-right-radius: 999px;
+    border-top: 0;
+    align-self: flex-end;
+  }
+
+  .ha-houston [data-shape^='half-down'] {
+    border-top-left-radius: 999px;
+    border-top-right-radius: 999px;
+    border-bottom: 0;
+    align-self: flex-start;
+  }
+
+  .ha-houston [data-shape$='bottom'] {
+    align-self: flex-end;
+  }
+
+  /* Kalp gözler — sevgi pozu (maske ile çizilir, rengi currentColor'den alır) */
+  .ha-houston [data-shape^='heart'] {
+    aspect-ratio: 1;
+    background: currentColor;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E");
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23000' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E");
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    border-radius: 0;
+    transform: none;
+  }
+
+  /* Ağlarken gözlerden süzülen gözyaşları */
+  .ha-fab.ha-crying .eye::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 60%;
+    width: calc(var(--ha-bw) * 1.1);
+    height: calc(var(--ha-bw) * 1.9);
+    margin-left: calc(var(--ha-bw) * -0.55);
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    background: #4af2c8;
+    box-shadow: 0 0 calc(var(--ha-bw) * 1.2) rgba(74, 242, 200, 0.8);
+    animation: ha-tear 1.4s ease-in infinite;
+  }
+
+  .ha-fab.ha-crying .eye:last-child::after {
+    animation-delay: 0.45s;
+  }
+
+  /* Çarpıya imleç gelince: sad halinin gözleri biraz büyümüş hâli */
+  .ha-fab.ha-dread .eye {
+    transform: scale(1.1);
+    transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Seyrek "Operatör" konuşma balonu: içeriğe göre büyür, en fazla chat genişliği */
+  .ha-bubble {
+    position: fixed;
+    inset-inline-end: 6.5rem;
+    inset-block-end: max(3.5rem, env(safe-area-inset-bottom, 0px));
+    width: fit-content;
+    max-width: min(18.5rem, calc(100vw - 2rem));
+    padding: 0.7rem 0.9rem;
+    border-radius: 14px;
+    background: rgba(22, 26, 34, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    color: var(--sl-color-gray-2, #e6e8ee);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    text-align: left;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+    transform-origin: bottom right;
+    transition: opacity 320ms ease, transform 320ms cubic-bezier(0.23, 1, 0.32, 1);
+    z-index: 1000;
+  }
+
+  .ha-bubble--show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* Kelime kelime fade-in (dinamik oluşturulur → Astro scope'undan kaçmak için global) */
+  :global(.ha-bubble .ha-word) {
+    opacity: 0;
+    filter: blur(3px);
+    transition: opacity 280ms ease, filter 280ms ease;
+  }
+
+  :global(.ha-bubble .ha-word--in) {
+    opacity: 1;
+    filter: none;
+  }
+
+  /* Okunan kelime highlight (okuma imleci) — JS ile eklenir → global */
+  :global(.ha-bubble .ha-word--read) {
+    background: rgba(188, 82, 238, 0.28);
+    color: #fff;
+    border-radius: 6px;
+    box-shadow: 0 0 0 3px rgba(188, 82, 238, 0.28);
+  }
+
+  /* Glitch chunk: TÜM CÜMLE tek konteyner → birlikte titrer, üstü çizik, siyah */
+  :global(.ha-bubble .ha-glitch) {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-weight: 700;
+    color: #000;
+    text-decoration: line-through;
+    letter-spacing: 0.02em;
+    display: inline-block;
+    animation: ha-glitch-word 160ms steps(2, end) infinite;
+  }
+
+  /* Zemin alt kelimelere: kelime kelime fade-in olurken de okunur */
+  :global(.ha-bubble .ha-glitch .ha-word) {
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 4px;
+    padding: 0 3px;
+    display: inline-block;
+  }
+
+  @keyframes ha-glitch-word {
+    0% { transform: translate(0, -1.5px); }
+    25% { transform: translate(1.5px, 1.5px); }
+    50% { transform: translate(-1.5px, 0.5px); }
+    75% { transform: translate(1px, -1px); }
+    100% { transform: translate(0, 1.5px); }
+  }
+
+  /* Houston glitch okurken: bakışı koruyarak ani kaymalar */
+  .ha-fab.ha-glitching .ha-houston__face {
+    animation: ha-face-glitch 170ms steps(1, end) infinite;
+  }
+  .ha-fab.ha-glitching .eye { animation: ha-eye-glitch 110ms steps(2, end) infinite; }
+  .ha-fab.ha-glitching .mouth { animation: ha-eye-glitch 90ms steps(2, end) infinite reverse; }
+
+  @keyframes ha-face-glitch {
+    0%, 100% { transform: translate(calc(var(--x) * 14%), calc(var(--y) * 18%)); }
+    25% { transform: translate(calc(var(--x) * 14% + 3px), calc(var(--y) * 18% - 2px)); }
+    50% { transform: translate(calc(var(--x) * 14% - 3px), calc(var(--y) * 18% + 2px)); }
+    75% { transform: translate(calc(var(--x) * 14% + 2px), calc(var(--y) * 18% + 1px)); }
+  }
+  @keyframes ha-eye-glitch {
+    0% { translate: -1.5px 0; }
+    50% { translate: 1.5px 1px; }
+    100% { translate: 0 0; }
+  }
+
+  /* "Geçmişim" anında yavaş üzgün geçiş (shape'ler tek tek yumuşar) */
+  .ha-fab.ha-emote .eye,
+  .ha-fab.ha-emote .mouth {
+    transition: aspect-ratio 1000ms ease, border-radius 1000ms ease,
+      border-width 1000ms ease, transform 1000ms ease;
+  }
+
+  /* (Test butonu kaldırıldı) */
+
+  @keyframes ha-tear {
+    0% {
+      transform: translateY(0) scale(0.5);
+      opacity: 0;
+    }
+    25% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(320%) scale(1);
+      opacity: 0;
+    }
+  }
+
+  /* Kapanınca küser: sağa kayıp yok olur (sayfa yenilenene kadar geri gelmez) */
+  .ha-fab.ha-gone {
+    transform: translateX(170%) rotate(26deg) scale(0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: width 320ms cubic-bezier(0.23, 1, 0.32, 1),
+      height 320ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 900ms cubic-bezier(0.5, 0, 0.75, 0), opacity 800ms ease;
+  }
+
+  /* Uyku modu: soluk, loş */
+  .ha-fab.ha-sleep .ha-houston__glow {
+    opacity: 0.2;
+  }
+
+  .ha-fab.ha-sleep .ha-houston__frame {
+    filter: saturate(0.55) brightness(0.8);
+  }
+
+  /* Uykuda yüz merkezde kalır, hafift öne/aşağı kayar — "bitkin" duruş. */
+  .ha-fab.ha-sleep .ha-houston__face {
+    transform: translate(0, 12%);
+  }
+
+  /* Uyanma anında gözler çizgiden daireye yavaşça büyür (kademeli açılış).
+     Sadece .ha-waking sınıfı varken aktif; normal göz kırpmayı etkilemez. */
+  .ha-fab.ha-waking .eye {
+    transition: aspect-ratio 420ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-radius 420ms ease;
+  }
+
+  /* Uykudayken sağ üstten süzülüp giden z z z */
+  .ha-houston__zzz {
+    position: absolute;
+    top: -0.9em;
+    right: -0.5em;
+    line-height: 1;
+    color: var(--sl-color-accent, #4af2c8);
+    pointer-events: none;
+  }
+
+  .ha-houston__zzz i {
+    position: absolute;
+    right: 0;
+    top: 0;
+    font-size: 0.55em;
+    font-style: normal;
+    font-weight: 700;
+    opacity: 0;
+    transform: translate(0, 0.4em) scale(0.8);
+  }
+
+  .ha-houston__zzz i:nth-child(2) {
+    font-size: 0.75em;
+  }
+
+  .ha-houston__zzz i:nth-child(3) {
+    font-size: 1em;
+  }
+
+  .ha-fab.ha-sleep .ha-houston__zzz i {
+    animation: ha-zzz 2.4s ease-out infinite;
+  }
+
+  .ha-fab.ha-sleep .ha-houston__zzz i:nth-child(2) {
+    animation-delay: 0.8s;
+  }
+
+  .ha-fab.ha-sleep .ha-houston__zzz i:nth-child(3) {
+    animation-delay: 1.6s;
+  }
+
+  /* Sevgi pozu: kalp gözlerden uçan kalpler (panel KAPALIYKEN belirir) */
+  .ha-houston__hearts {
+    position: absolute;
+    top: -1.1em;
+    right: -0.2em;
+    line-height: 1;
+    color: #f52691;
+    pointer-events: none;
+  }
+
+  .ha-houston__hearts i {
+    position: absolute;
+    right: 0;
+    top: 0;
+    font-size: 0.6em;
+    font-style: normal;
+    opacity: 0;
+    transform: translate(0, 0.4em) scale(0.6);
+  }
+
+  .ha-houston__hearts i:nth-child(2) {
+    font-size: 0.85em;
+  }
+
+  .ha-houston__hearts i:nth-child(3) {
+    font-size: 1.1em;
+  }
+
+  .ha-fab.ha-love .ha-houston__hearts i {
+    animation: ha-heart-float 2.6s ease-out infinite;
+  }
+
+  .ha-fab.ha-love .ha-houston__hearts i:nth-child(2) {
+    animation-delay: 0.85s;
+  }
+
+  .ha-fab.ha-love .ha-houston__hearts i:nth-child(3) {
+    animation-delay: 1.7s;
+  }
+
+  @keyframes ha-heart-float {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0.5em) scale(0.5) rotate(-8deg);
+    }
+    25% {
+      opacity: 0.95;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(0.5em, -1.6em) scale(1.2) rotate(10deg);
+    }
+  }
+
+  @keyframes ha-zzz {
+    0% {
+      opacity: 0;
+      transform: translate(0, 0.4em) scale(0.7);
+    }
+    25% {
+      opacity: 0.95;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(0.9em, -1.4em) scale(1.25);
+    }
+  }
+
+  /* Soru gönderildiğinde sayfanın en üst ortasına fırlatılan Perplexity ikonu */
+  .ha-throw {
+    position: fixed;
+    top: 0.9rem;
+    left: 50%;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 0.85rem;
+    background: #20808d;
+    color: #fff;
+    box-shadow: 0 12px 32px rgba(32, 128, 141, 0.45);
+    transform: translate(-50%, -200%);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .ha-throw.ha-throw--go {
+    animation: ha-throw 900ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes ha-throw {
+    0% {
+      transform: translate(-50%, -220%) scale(0.35) rotate(-30deg);
+      opacity: 0;
+    }
+    35% {
+      transform: translate(-50%, 0) scale(1.15) rotate(8deg);
+      opacity: 1;
+    }
+    60% {
+      transform: translate(-50%, 0) scale(1) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-50%, -70%) scale(0.65);
+      opacity: 0;
+    }
+  }
+
+
+  /* --- Panel --- */
+  .ha-panel {
+    position: fixed;
+    inset-inline-end: 1rem;
+    inset-block-end: calc(max(1rem, env(safe-area-inset-bottom, 0px)) + 5.25rem);
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    width: min(18.5rem, calc(100vw - 2rem));
+    height: min(23rem, calc(100dvh - 7rem));
+    overflow: hidden;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.9rem;
+    background: var(--sl-color-bg);
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  }
+
+  .ha-panel[hidden] {
+    display: none !important;
+  }
+
+  /* Siri gibi alttan yumuşakça yükselerek açılır */
+  .ha-panel:not([hidden]) {
+    animation: ha-panel-in 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @keyframes ha-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.97);
+    }
+  }
+
+  /* --- Panel başlığı --- */
+  .ha-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    padding: 0.6rem 0.7rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-7, var(--sl-color-bg));
+  }
+
+  .ha-head__icon {
+    flex-shrink: 0;
+    border-radius: 50%;
+  }
+
+  .ha-head__titles {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    margin-inline-end: auto;
+  }
+
+  .ha-head__titles strong {
+    font-size: 0.86rem;
+    color: var(--sl-color-white);
+  }
+
+  .ha-head__titles span {
+    font-size: 0.68rem;
+    color: var(--sl-color-gray-2);
+  }
+
+  .ha-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.4rem;
+    background: transparent;
+    color: var(--sl-color-gray-2);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+
+  .ha-icon-btn:hover {
+    border-color: var(--sl-color-gray-5);
+    background: var(--sl-color-gray-6);
+    color: var(--sl-color-white);
+  }
+
+  /* --- Görünüm kapsayıcıları --- */
+  .ha-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+</style>
+
+<style is:global>
+  /* --- Sohbet mesajları (GLOBAL şart: mesajlar JS ile createElement ile
+     eklendiği için Astro'nun scoped stilleri onlara işlemez) --- */
+  .ha-msgs {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    font-size: var(--sl-text-sm, 0.875rem);
+    line-height: 1.55;
+  }
+
+  /* Konuşmacı değişince araya nefes payı girer. */
+  .ha-msg--user + .ha-msg--bot,
+  .ha-msg--bot + .ha-msg--user {
+    margin-top: 0.45rem;
+  }
+
+  .ha-msg {
+    width: fit-content;
+    max-width: 85%;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.75rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Houston: solda, mor glow'lu balon */
+  .ha-msg--bot {
+    align-self: flex-start;
+    border: 1px solid rgba(183, 133, 245, 0.55);
+    border-start-start-radius: 0.2rem;
+    background: linear-gradient(135deg, rgba(183, 133, 245, 0.16), rgba(183, 133, 245, 0.05));
+    color: var(--sl-color-text);
+    box-shadow:
+      0 0 10px rgba(183, 133, 245, 0.35),
+      0 0 26px rgba(183, 133, 245, 0.14),
+      0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Sen: sağda, sade amber balon */
+  .ha-msg--user {
+    align-self: flex-end;
+    border: 1px solid var(--sl-color-accent);
+    border-start-end-radius: 0.2rem;
+    background: rgba(245, 158, 11, 0.18);
+    color: var(--sl-color-white);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  }
+
+  .ha-msg--typing {
+    color: var(--sl-color-gray-2);
+    font-style: italic;
+  }
+
+  /* Geri çağırma repliğinde kelime kelime beliren yazı (ağız hareketiyle uyumlu) */
+  .ha-word {
+    opacity: 0;
+    filter: blur(2px);
+    transition: opacity 160ms ease, filter 160ms ease;
+  }
+
+  .ha-word--in {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  /* --- Yazma alanı --- */
+  .ha-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.45rem;
+    padding: 0.55rem 0.65rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+  }
+
+  .ha-input {
+    flex: 1;
+    resize: none;
+    max-height: 6.5rem;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.6rem;
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+    color: var(--sl-color-white);
+    font: inherit;
+    font-size: var(--sl-text-sm, 0.875rem);
+    line-height: 1.45;
+  }
+
+  .ha-input::placeholder {
+    color: var(--sl-color-gray-3);
+  }
+
+  .ha-input:focus {
+    outline: none;
+    border-color: var(--sl-color-text-accent);
+  }
+
+  .ha-send {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 0.6rem;
+    background: var(--sl-color-accent);
+    color: #1c1206;
+    cursor: pointer;
+    transition: filter 150ms ease, transform 150ms ease;
+  }
+
+  .ha-send:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .ha-send:focus-visible {
+    outline: 2px solid var(--sl-color-text-accent);
+    outline-offset: 2px;
+  }
+
+  /* --- Bot mesajı içindeki tıklanabilir bağlantı --- */
+  .ha-msg a {
+    color: var(--sl-color-text-accent);
+    font-weight: 600;
+    text-decoration: underline;
+  }
+
+  .ha-msg a:hover {
+    color: var(--sl-color-accent-high);
+  }
+
+  /* --- Yazarken canlı site içi eşleşmeler (Pagefind) --- */
+  .ha-live {
+    max-height: 6.5rem;
+    overflow-y: auto;
+    padding: 0.5rem 0.65rem 0.35rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+  }
+
+  .ha-live[hidden] {
+    display: none !important;
+  }
+
+  .ha-live__head {
+    margin: 0 0 0.35rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--sl-color-gray-2);
+  }
+
+  .ha-live__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .ha-live__link {
+    display: block;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+    text-decoration: none;
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+
+  .ha-live__link:hover {
+    border-color: var(--sl-color-text-accent);
+    background: var(--sl-color-gray-6);
+  }
+
+  .ha-live__title {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--sl-color-accent-high);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ha-live__snippet {
+    display: -webkit-box;
+    margin-top: 0.1rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    color: var(--sl-color-gray-2);
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* --- Mobil: panel tam genişliğe yakın --- */
+  @media (max-width: 30rem) {
+    .ha-panel {
+      inset-inline-end: 0.5rem;
+      inset-inline-start: 0.5rem;
+      width: auto;
+    }
+  }
+
+  /* Hareket azaltma tercihi: takip geçişleri ve açılış animasyonu kapanır */
+  @media (prefers-reduced-motion: reduce) {
+    .ha-fab,
+    .ha-houston__face,
+    .ha-houston__zzz,
+    .ha-houston__zzz i,
+    .ha-houston__hearts,
+    .ha-houston__hearts i,
+    .ha-fab.ha-crying .eye::after,
+    .ha-word,
+    .ha-throw,
+    .ha-panel:not([hidden]) {
+      animation: none;
+      transition: none;
+    }
+
+    /* Hareket azaltmada karakter hiç kaybolmaz, yalnızca küser */
+    .ha-fab.ha-gone {
+      transform: scale(0.75);
+      opacity: 0.4;
+    }
+  }
+
+  /* hideHouston=true → tüm Houston elemanları gizli, sadece kapı sekmesi görünür */
+  [data-ha-hidden='true'] .ha-fab,
+  [data-ha-hidden='true'] .ha-panel,
+  [data-ha-hidden='true'] .ha-bubble {
+    display: none !important;
+  }
+</style>
+
+
+</div>
