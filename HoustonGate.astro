@@ -109,7 +109,7 @@ try {
       if (html) html.removeAttribute('data-ha-hidden');
       showRadio(false);
       // Çekirdeği yükle ve başlat.
-      import('../js/houston-core.js').then(function (m) {
+      import('./houston-core.js').then(function (m) {
         m.initHouston({ baseUrl: document.baseURI, isDev: false });
         m.recallHouston();
       }).catch(function (err) { console.error('Houston core yüklenemedi:', err); });
@@ -125,7 +125,7 @@ try {
       if (html) html.removeAttribute('data-ha-hidden');
       showRadio(false);
       // Normal akış: çekirdeği yükle ve başlat.
-      import('../js/houston-core.js').then(function (m) {
+      import('./houston-core.js').then(function (m) {
         m.initHouston({ baseUrl: document.baseURI, isDev: false });
       }).catch(function (err) { console.error('Houston core yüklenemedi:', err); });
     }
